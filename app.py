@@ -45,6 +45,20 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         text-align: center;
     }
+    .location-card {
+        background-color: #f0f8ff;
+        border: 1px solid #d4af37;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+    }
+    .attraction-highlight {
+        background-color: #e8f5e8;
+        border-radius: 5px;
+        padding: 0.5rem;
+        margin: 0.25rem 0;
+        border-left: 3px solid #28a745;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -87,6 +101,91 @@ def process_infrastructure_data(df):
         })
     
     return pd.DataFrame(infrastructure_data)
+
+def get_towns_with_attractions(df):
+    """Get detailed information about towns with tourist attractions"""
+    # Define the column names for attractions
+    attractions_exists_col = 'Existence of touristic attractions prone to be exploited and developed - exists'
+    
+    # Find towns with attractions
+    if attractions_exists_col in df.columns:
+        towns_with_attractions = df[df[attractions_exists_col] == 1].copy()
+        
+        # Get relevant columns for display
+        display_columns = []
+        if 'Name of the town / village' in df.columns:
+            display_columns.append('Name of the town / village')
+        elif 'Town' in df.columns:
+            display_columns.append('Town')
+        elif 'Village' in df.columns:
+            display_columns.append('Village')
+        
+        # Add infrastructure columns
+        infrastructure_cols = [
+            'Existence of hotels - exists',
+            'Existence of restaurants - exists', 
+            'Existence of cafes - exists',
+            'Existence of guest houses - exists'
+        ]
+        
+        for col in infrastructure_cols:
+            if col in df.columns:
+                display_columns.append(col)
+        
+        if display_columns:
+            return towns_with_attractions[display_columns]
+    
+    return pd.DataFrame()
+
+def create_towns_map(df):
+    """Create a map showing towns with tourist attractions"""
+    # This is a placeholder for map functionality
+    # In a real implementation, you would need latitude/longitude data
+    towns_with_attractions = get_towns_with_attractions(df)
+    
+    if not towns_with_attractions.empty:
+        # Create a simple scatter plot as placeholder for map
+        fig = go.Figure()
+        
+        # Since we don't have actual coordinates, create a symbolic representation
+        town_names = []
+        if 'Name of the town / village' in towns_with_attractions.columns:
+            town_names = towns_with_attractions['Name of the town / village'].tolist()
+        
+        if town_names:
+            # Create a simple visualization showing town names
+            fig.add_trace(go.Scatter(
+                x=list(range(len(town_names))),
+                y=[1] * len(town_names),
+                mode='markers+text',
+                text=town_names,
+                textposition="top center",
+                marker=dict(size=15, color='#d4af37', symbol='star'),
+                name='Towns with Tourist Attractions'
+            ))
+            
+            fig.update_layout(
+                title="Lebanese Towns with Tourist Attractions",
+                xaxis_title="Town Index",
+                yaxis=dict(visible=False),
+                height=400,
+                showlegend=False
+            )
+        else:
+            fig.add_annotation(
+                text="Town names not available in dataset",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False
+            )
+    else:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No towns with attractions data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False
+        )
+    
+    return fig
 
 def create_interactive_bar_chart(df, selected_categories, chart_type):
     """Create interactive bar chart with filtering"""
@@ -277,6 +376,14 @@ def main():
         help="Categories above this threshold will be highlighted in insights"
     )
     
+    # NEW: Location exploration toggle
+    st.sidebar.subheader("🗺️ Location Details")
+    show_locations = st.sidebar.checkbox(
+        "Show Towns with Tourist Attractions",
+        value=True,
+        help="Display detailed information about towns that have tourist attractions"
+    )
+    
     # Main content
     col1, col2, col3 = st.columns(3)
     
@@ -313,6 +420,116 @@ def main():
     pie_fig = create_interactive_pie_chart(infrastructure_df, selected_categories, pie_chart_view)
     st.plotly_chart(pie_fig, use_container_width=True)
     
+    # NEW: Tourist Attractions Location Section
+    if show_locations:
+        st.markdown('<div class="sub-header">🗺️ Towns to Visit - Tourist Attractions</div>', unsafe_allow_html=True)
+        
+        # Get towns with attractions
+        towns_with_attractions = get_towns_with_attractions(raw_data)
+        
+        if not towns_with_attractions.empty:
+            # Display map
+            st.subheader("📍 Tourist Destination Map")
+            map_fig = create_towns_map(raw_data)
+            st.plotly_chart(map_fig, use_container_width=True)
+            
+            # Display detailed town information
+            st.subheader("🏛️ Towns with Tourist Attractions - Where to Visit")
+            
+            # Create two columns for better layout
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("### 🌟 Recommended Tourist Destinations")
+                
+                for idx, (_, town) in enumerate(towns_with_attractions.iterrows()):
+                    # Get town name
+                    town_name = "Unknown"
+                    for name_col in ['Name of the town / village', 'Town', 'Village']:
+                        if name_col in town.index and pd.notna(town[name_col]):
+                            town_name = town[name_col]
+                            break
+                    
+                    st.markdown(f'<div class="attraction-highlight">', unsafe_allow_html=True)
+                    st.markdown(f"**🏛️ {town_name}**")
+                    st.markdown("✅ Has Tourist Attractions")
+                    
+                    # Show available infrastructure
+                    infrastructure_available = []
+                    infrastructure_mapping = {
+                        'Existence of hotels - exists': '🏨 Hotels',
+                        'Existence of restaurants - exists': '🍽️ Restaurants',
+                        'Existence of cafes - exists': '☕ Cafes',
+                        'Existence of guest houses - exists': '🏠 Guest Houses'
+                    }
+                    
+                    for col, icon_name in infrastructure_mapping.items():
+                        if col in town.index and town[col] == 1:
+                            infrastructure_available.append(icon_name)
+                    
+                    if infrastructure_available:
+                        st.markdown("**Available Infrastructure:**")
+                        for infra in infrastructure_available:
+                            st.markdown(f"• {infra}")
+                    else:
+                        st.markdown("⚠️ Limited infrastructure - bring essentials")
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # Add some spacing
+                    if idx < len(towns_with_attractions) - 1:
+                        st.markdown("---")
+            
+            with col2:
+                st.markdown("### 📊 Infrastructure Summary for Tourist Towns")
+                
+                # Calculate infrastructure availability for towns with attractions
+                infra_summary = {
+                    'Hotels': 0, 'Restaurants': 0, 'Cafes': 0, 'Guest Houses': 0
+                }
+                
+                for _, town in towns_with_attractions.iterrows():
+                    if 'Existence of hotels - exists' in town.index and town['Existence of hotels - exists'] == 1:
+                        infra_summary['Hotels'] += 1
+                    if 'Existence of restaurants - exists' in town.index and town['Existence of restaurants - exists'] == 1:
+                        infra_summary['Restaurants'] += 1
+                    if 'Existence of cafes - exists' in town.index and town['Existence of cafes - exists'] == 1:
+                        infra_summary['Cafes'] += 1
+                    if 'Existence of guest houses - exists' in town.index and town['Existence of guest houses - exists'] == 1:
+                        infra_summary['Guest Houses'] += 1
+                
+                total_tourist_towns = len(towns_with_attractions)
+                
+                for infra_type, count in infra_summary.items():
+                    percentage = (count / total_tourist_towns * 100) if total_tourist_towns > 0 else 0
+                    st.metric(
+                        label=f"{infra_type} Available",
+                        value=f"{count}/{total_tourist_towns}",
+                        delta=f"{percentage:.1f}%"
+                    )
+            
+            # Tourist recommendations
+            st.markdown("### 🎒 Travel Planning Tips")
+            st.markdown(f"""
+            <div class="insight-box">
+            <b>🗺️ Planning Your Visit to Lebanese Tourist Towns:</b><br>
+            • <b>Total destinations with attractions:</b> {len(towns_with_attractions)} towns<br>
+            • <b>Best equipped towns:</b> Look for destinations with hotels AND restaurants<br>
+            • <b>Adventure destinations:</b> Towns with attractions but limited infrastructure offer authentic experiences<br>
+            • <b>Recommendation:</b> Plan accommodations in advance for towns with limited guest houses
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Detailed data table for tourist towns
+            with st.expander("📋 Complete List of Tourist Destinations"):
+                st.dataframe(
+                    towns_with_attractions,
+                    use_container_width=True,
+                    hide_index=True
+                )
+        else:
+            st.warning("No specific town data available for tourist attractions.")
+    
     # Dynamic insights
     st.markdown('<div class="sub-header">🔍 Dynamic Insights</div>', unsafe_allow_html=True)
     
@@ -335,7 +552,7 @@ def main():
         st.markdown('</div>', unsafe_allow_html=True)
     
     # Data table
-    with st.expander("📋 Detailed Data Table"):
+    with st.expander("📋 Detailed Infrastructure Data Table"):
         st.dataframe(
             filtered_df,
             use_container_width=True,
@@ -345,8 +562,7 @@ def main():
     # Footer
     st.markdown("---")
     st.markdown("**Data Source:** American University of Beirut - Lebanon Tourism Infrastructure Study")
-    st.markdown("**Dashboard Features:** Interactive filtering, dynamic visualizations, and real-time insights")
+    st.markdown("**Dashboard Features:** Interactive filtering, dynamic visualizations, location insights, and travel planning recommendations")
 
 if __name__ == "__main__":
     main()
-    
